@@ -1,0 +1,41 @@
+name: Run facebook.py
+
+on:
+  workflow_dispatch:  # This enables the manual run
+  schedule:
+    # Every 8 hours, like instagram.yml, offset 30 min so the two don't hit
+    # ScrapeCreators at the same moment
+    - cron: '30 */8 * * *'
+
+jobs:
+  run-bigquery-script:
+    runs-on: ubuntu-latest
+    # facebook.py stops starting new pages at 2h30m
+    timeout-minutes: 170
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Save GCP credentials to a file
+      run: echo "${{ secrets.BIGQUERY_CREDENTIALS }}" > $HOME/key.json
+
+    - name: Set GOOGLE_APPLICATION_CREDENTIALS
+      run: echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/key.json" >> $GITHUB_ENV
+
+    - name: Run Python script
+      run: python facebook.py
+
+    env:
+      SCRAPECREATORS_API_KEY: ${{ secrets.SCRAPECREATORS_API_KEY }}

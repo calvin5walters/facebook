@@ -1,0 +1,7 @@
+pandas==2.2.3
+numpy
+google-cloud-bigquery
+pyarrow
+db-dtypes
+pytz==2023.3
+requests
