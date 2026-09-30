@@ -457,7 +457,9 @@ def _conform(df, schema):
         if field.name not in df.columns:
             df[field.name] = None
         if field.field_type == 'INTEGER':
-            df[field.name] = pd.to_numeric(df[field.name], errors='coerce').astype('Int64')
+            # reel view counts arrive as floats parsed from "9.4K", e.g.
+            # 9400.000000000002, which Int64 refuses without rounding
+            df[field.name] = pd.to_numeric(df[field.name], errors='coerce').round().astype('Int64')
         elif field.field_type == 'BOOLEAN':
             df[field.name] = df[field.name].astype('boolean')
         elif field.field_type == 'TIMESTAMP':
