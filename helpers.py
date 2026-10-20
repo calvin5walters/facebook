@@ -322,17 +322,40 @@ def get_posts_df(page_url=None, page_id=None, username=None, num_posts=12, curso
 REEL_FILL_COLUMNS = ['video_views', 'sound_id', 'sound_title', 'video_url', 'thumbnail']
 
 
-def get_reels_df(page_url, username):
-    """First page (10) of the page's Reels tab, as posts rows.
+def get_reels_df(page_url, username, pages=1):
+    """The first `pages` pages (10 reels each) of the page's Reels tab, as
+    posts rows.
 
     The posts feed leaves view counts null and has no music; reels carry both,
     plus Reels-tab-only reels the feed never lists. Reels have no reaction or
     comment counts, so those stay null for reels not in the posts feed.
     """
 
-    data = get_json(f"{BASE_URL}/v1/facebook/profile/reels?url={quote(page_url, safe='')}")
+    url = f"{BASE_URL}/v1/facebook/profile/reels?url={quote(page_url, safe='')}"
+    items, seen, cursor, next_page_id = [], set(), None, None
+    for _ in range(pages):
+        # the next page needs both cursor and next_page_id from the last one
+        request_url = url
+        if cursor and next_page_id:
+            request_url += f"&cursor={quote(cursor, safe='')}&next_page_id={quote(next_page_id, safe='')}"
+        data = get_json(request_url)
+        if not data:
+            break
+        found = len(items)
+        for reel in data.get('reels') or []:
+            if reel.get('post_id') and reel['post_id'] not in seen:
+                seen.add(reel['post_id'])
+                items.append(reel)
+        # a page with nothing new means the cursor is repeating - stop before
+        # paying for it again
+        if len(items) == found:
+            break
+        cursor, next_page_id = data.get('cursor'), data.get('next_page_id')
+        if not cursor or not next_page_id:
+            break
+
     rows = []
-    for reel in (data or {}).get('reels') or []:
+    for reel in items:
         post_id = reel.get('post_id')
         if not post_id:
             continue
@@ -387,11 +410,11 @@ def _merge_reels(posts, reels):
     return pd.concat([posts, extra[POST_COLUMNS]], ignore_index=True)
 
 
-def get_account_df(page_url, username, num_posts=12):
+def get_account_df(page_url, username, num_posts=24, reel_pages=1):
     """Profile row and posts for the scheduled pull.
 
-    Credits per account: 1 profile + ceil(num_posts / 3) posts pages + 1 reels
-    page. Returns (profile_df, posts_df); both empty if the page can't be read.
+    Credits per account: 1 profile + ceil(num_posts / 3) posts pages +
+    reel_pages reels pages. Returns (profile_df, posts_df); both empty if the page can't be read.
     """
 
     profile, page_id = get_profile(page_url, username)
@@ -400,7 +423,7 @@ def get_account_df(page_url, username, num_posts=12):
 
     posts = get_posts_df(page_url=page_url, page_id=page_id, username=username,
                          num_posts=num_posts)
-    posts = _merge_reels(posts, get_reels_df(page_url, username))
+    posts = _merge_reels(posts, get_reels_df(page_url, username, pages=reel_pages))
     if not posts.empty:
         posts['page_id'] = posts['page_id'].fillna(page_id)
     return profile, posts.reset_index(drop=True)
