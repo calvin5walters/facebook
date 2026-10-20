@@ -36,9 +36,12 @@ MAX_WORKERS = 8
 TIME_LIMIT_SECONDS = 9000
 # flush to BigQuery every this many pages, so a crash loses little
 EXPORT_EVERY = 25
-# posts per pull (3 per ScrapeCreators request); first pulls go deeper
-NUM_POSTS = 12
-NUM_POSTS_FIRST_PULL = 24
+# posts per pull (3 per ScrapeCreators request) and Reels tab pages (10 reels
+# each); first pulls go deeper. Same depth as instagram.py.
+NUM_POSTS = 24
+NUM_POSTS_FIRST_PULL = 48
+REEL_PAGES = 1
+REEL_PAGES_FIRST_PULL = 4
 
 # artist -> Facebook page URL, for artists whose Chartmetric link is missing
 # or wrong (e.g. a personal profile instead of the artist page)
@@ -104,9 +107,10 @@ def get_pull_history(bq_client):
     return pulled_today, last_pull
 
 
-def pull_account(account, num_posts):
+def pull_account(account, num_posts, reel_pages):
     username = account['username']
-    user, posts = get_account_df(account['page_url'], username, num_posts=num_posts)
+    user, posts = get_account_df(account['page_url'], username, num_posts=num_posts,
+                                 reel_pages=reel_pages)
     if user.empty:
         return account, user, posts
     for df in (user, posts):
@@ -169,8 +173,11 @@ def main():
             account = next(pending, None)
             if account is None:
                 return False
-            num_posts = NUM_POSTS if account['username'] in last_pull else NUM_POSTS_FIRST_PULL
-            futures[pool.submit(pull_account, account, num_posts)] = account
+            if account['username'] in last_pull:
+                num_posts, reel_pages = NUM_POSTS, REEL_PAGES
+            else:
+                num_posts, reel_pages = NUM_POSTS_FIRST_PULL, REEL_PAGES_FIRST_PULL
+            futures[pool.submit(pull_account, account, num_posts, reel_pages)] = account
             return True
 
         for _ in range(MAX_WORKERS):
